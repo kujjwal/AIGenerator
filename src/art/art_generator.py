@@ -1,19 +1,20 @@
-import matplotlib.pyplot as plt
 import matplotlib as mpl
+import matplotlib.pyplot as plt
 import numpy as np
+import tensorflow as tf
 from PIL import Image
+import argparse
+import os
 import time
 
-import tensorflow as tf
-from tensorflow.python.keras.preprocessing import image as kp_image
-from tensorflow.python.keras import models
-
 print('TF Eager Execution status: ' + str(tf.executing_eagerly()))
-ROOT_CONTENT_PATH = './art_pieces'  # TODO
-ROOT_STYLE_PATH = './art_pieces'  # TODO
 
-mpl.rcParams['figure.figsize'] = (10, 10)
-mpl.rcParams['axes.grid'] = False
+ROOT_DIR = os.path.dirname(os.path.realpath(__file__))
+ASSOCIATION = {
+    'Van Gogh': ROOT_DIR + "/art_pieces/1024px-Van_Gogh_-_Starry_Night_-_Google_Art_Project.jpg",
+    'Hokusai': ROOT_DIR + "/art_pieces/The_Great_Wave_off_Kanagawa.jpg",
+    "Kandinsky": ROOT_DIR + "/art_pieces/Vassily_Kandinsky,_1913_-_Composition_7.jpg"
+}
 
 
 def load_img(path):
@@ -21,7 +22,7 @@ def load_img(path):
     img = Image.open(path)
     scale = max_dim/max(img.size)
     img = img.resize((round(img.size[0] * scale), round(img.size[1] * scale)), Image.ANTIALIAS)
-    img = kp_image.img_to_array(img)
+    img = tf.keras.preprocessing.image.img_to_array(img)
     return np.expand_dims(img, axis=0)
 
 
@@ -77,7 +78,7 @@ def get_model(style_layers, content_layers):
     style_outputs = [vgg.get_layer(name).output for name in style_layers]
     content_outputs = [vgg.get_layer(name).output for name in content_layers]
     # Style and Content layers combine to create model output layer
-    return models.Model(vgg.input, style_outputs + content_outputs)
+    return tf.keras.models.Model(vgg.input, style_outputs + content_outputs)
 
 
 def get_content_loss(base_content, target):
@@ -123,7 +124,7 @@ def get_feature_representations(model, content_path, style_path, num_style_layer
     style_img = load_and_process_img(style_path)
 
     # Batch compute content and style features && get style and content feature reps from the model
-    content_features = [content_layer[0] for content_layer in model(content_img)[num_style_layers:]]  # Error? TODO
+    content_features = [content_layer[0] for content_layer in model(content_img)[num_style_layers:]]
     style_features = [style_layer[0] for style_layer in model(style_img)[:num_style_layers]]
     return style_features, content_features
 
@@ -181,7 +182,7 @@ def compute_loss(model, loss_weights, init_img, gram_style_features,
 def compute_gradients(cfg):
     with tf.GradientTape() as tape:
         all_loss = compute_loss(**cfg)
-    return tape.gradient(all_loss[0], cfg['init_image']), all_loss
+    return tape.gradient(all_loss[0], cfg['init_img']), all_loss
 
 
 def run_style_transfer(content_path, style_path, style_layers, content_layers,
@@ -202,7 +203,7 @@ def run_style_transfer(content_path, style_path, style_layers, content_layers,
     init_image = load_and_process_img(content_path)
     init_image = tf.Variable(init_image, dtype=tf.float32)
     # Create our optimizer
-    opt = tf.keras.optimizers.Adam(learning_rate=5, beta1=0.99, epsilon=1e-1)
+    opt = tf.keras.optimizers.Adam(learning_rate=5, beta_1=0.99, epsilon=1e-1)
 
     # For displaying intermediate images
     # iter_count = 1
@@ -289,10 +290,10 @@ def show_results(best_img, content_path, style_path, show_large_final=True):
         plt.show()
 
 
-def main():
+def main(content_path, style_path):
     plt.figure(figsize=(10, 10))
-    content = load_img(ROOT_CONTENT_PATH).astype('uint8')
-    style = load_img(ROOT_STYLE_PATH).astype('uint8')
+    content = load_img(content_path).astype('uint8')
+    style = load_img(style_path).astype('uint8')
 
     plt.subplot(1, 2, 1)
     imshow(content, 'Content Image')
@@ -305,11 +306,22 @@ def main():
     style_layers = ['block1_conv1', 'block2_conv1', 'block3_conv1',
                     'block4_conv1', 'block5_conv1']
 
-    best, best_loss = run_style_transfer(ROOT_CONTENT_PATH, ROOT_STYLE_PATH,
+    best, best_loss = run_style_transfer(content_path, style_path,
                                          style_layers, content_layers, num_iterations=1000)
     Image.fromarray(best)
-    show_results(best, ROOT_CONTENT_PATH, ROOT_STYLE_PATH)
+    show_results(best, content_path, style_path)
 
 
 if __name__ == "__main__":
-    main()
+    mpl.rcParams['figure.figsize'] = (10, 10)
+    mpl.rcParams['axes.grid'] = False
+
+    parser = argparse.ArgumentParser(description='Generate styled art through AI')
+    parser.add_argument('content_path', type=str, help='image path to be styled')
+    parser.add_argument('style_path', type=str, help='image path of styled image or artist style')
+    args = parser.parse_args()
+
+    if args.style_path in ASSOCIATION:
+        main(args.content_path, ASSOCIATION[args.style_path])
+    else:
+        main(args.content_path, args.style_path)
