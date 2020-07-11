@@ -2,3 +2,8 @@ tensorflow
 matplotlib
 numpy
 pillow
+magenta
+music21
+pandas
+np_utils
+keras
